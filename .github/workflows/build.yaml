@@ -17,7 +17,37 @@ env:
   FLUTTER_VERSION: '3.44.4'
 
 jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout FlClash
+        uses: actions/checkout@v4
+        with:
+          repository: go2world-icu/FlClash
+          ref: ${{ inputs.ref || github.ref_name }}
+          submodules: recursive
+          token: ${{ secrets.BOT_PAT }}
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Run tests
+        run: flutter test --reporter expanded
+
   build:
+    needs: [ test ]
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         include:
@@ -45,7 +75,6 @@ jobs:
             os: ubuntu-24.04-arm
             arch: arm64
 
-    runs-on: ${{ matrix.os }}
     steps:
       - name: Setup rust (Windows ARM64)
         if: startsWith(matrix.os, 'windows-11-arm')
@@ -124,36 +153,84 @@ jobs:
           mkdir -p dist/ios
           cp -R build/ios/iphoneos/Runner.app dist/ios/
 
-      - name: Upload artifacts
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: artifact-${{ matrix.platform }}${{ matrix.arch && format('-{0}', matrix.arch) }}
           path: ./dist
           overwrite: true
 
-  release:
-    if: ${{ github.ref_type == 'tag' && startsWith(github.ref, 'refs/tags/v') }}
-    needs: [ build ]
-    runs-on: ubuntu-latest
+  changelog:
+    if: ${{ !contains(github.ref, '-') && github.ref_type == 'tag' }}
     permissions:
       contents: write
+    runs-on: ubuntu-latest
+    needs: [ build ]
     steps:
-      - name: Checkout
+      - name: Checkout FlClash
         uses: actions/checkout@v4
         with:
           repository: go2world-icu/FlClash
-          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          ref: refs/heads/main
+          token: ${{ secrets.BOT_PAT }}
+
+      - name: Generate
+        run: |
+          last_ver=$(grep -m1 '^## ' CHANGELOG.md 2>/dev/null | sed 's/^## //')
+          tags=($(git tag --merged HEAD --sort=-creatordate))
+          temp="NEW_CHANGELOG.md" > "$temp"
+          for i in "${!tags[@]}"; do
+              curr="${tags[i]}"
+              [[ "$curr" == "$last_ver" ]] && break
+              prev="${tags[i+1]}"
+              range="${prev:+$prev..}$curr"
+              echo -e "## $curr\n" >> "$temp"
+              git log --no-merges --pretty=format:"%B" "$range" | \
+              awk '!/Update changelog/ && NF {print "- " $0 "\n"}' >> "$temp"
+          done
+          [ -f CHANGELOG.md ] && cat CHANGELOG.md >> "$temp"
+          mv "$temp" CHANGELOG.md
+
+      - name: Commit
+        run: |
+          git add CHANGELOG.md
+          if ! git diff --cached --quiet; then
+            echo "Commit pushing"
+            git config --local user.email "chen08209@gmail.com"
+            git config --local user.name "chen08209"
+            git commit -m "Update changelog"
+            if git push; then
+              echo "Push succeeded"
+            else
+              echo "Push failed"
+              exit 1
+            fi
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.BOT_PAT }}
+
+  upload:
+    permissions:
+      contents: write
+    needs: [ build ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout FlClash
+        uses: actions/checkout@v4
+        with:
+          repository: go2world-icu/FlClash
           fetch-depth: 0
           token: ${{ secrets.BOT_PAT }}
 
-      - name: Download artifacts
+      - name: Download
         uses: actions/download-artifact@v4
         with:
           path: ./dist/
           pattern: artifact-*
           merge-multiple: true
 
-      - name: Generate release body
+      - name: Generate release.md
         run: |
           tags=($(git tag --merged HEAD --sort=-creatordate))
           preTag=$(curl -s "https://api.github.com/repos/go2world-icu/FlClash/releases/latest" | \
@@ -177,13 +254,14 @@ jobs:
           version=$(echo "${{ github.ref_name }}" | sed 's/^v//')
           sed "s|VERSION|$version|g" ./.github/release_template.md >> release.md
 
-      - name: Generate SHA256
+      - name: Generate sha256
         if: ${{ env.IS_STABLE == 'true' }}
         run: |
           cd ./dist
           sha256sum ./* > SHA256SUMS
 
-      - name: Create Release
+      - name: Release
+        if: ${{ env.IS_STABLE == 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           files: ./dist/*
