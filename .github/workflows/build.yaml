@@ -62,7 +62,7 @@ jobs:
           repository: go2world-icu/FlClash
           ref: ${{ inputs.ref || github.ref_name }}
           submodules: recursive
-          token: ${{ secrets.BOARD_SDK_PAT }}
+          token: ${{ secrets.BOT_PAT }}
 
       - name: Setup Android Signing
         if: startsWith(matrix.platform,'android')
@@ -144,6 +144,7 @@ jobs:
           repository: go2world-icu/FlClash
           ref: ${{ github.ref_name }}
           fetch-depth: 0
+          token: ${{ secrets.BOT_PAT }}
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
@@ -188,3 +189,4 @@ jobs:
           files: ./dist/*
           body_path: './release.md'
           repository: go2world-icu/FlClash
+          token: ${{ secrets.BOT_PAT }}

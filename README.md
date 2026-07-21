@@ -18,7 +18,7 @@
 
 | Secret | 说明 |
 |--------|------|
-| `BOARD_SDK_PAT` | 访问私有子模块 board_sdk 的 Token |
+| `BOT_PAT` | 访问私有仓库和子模块的 Token（需 `Contents` 读+写权限） |
 | `KEYSTORE` | Android 签名文件 (base64) |
 | `SERVICE_JSON` | Google Services 配置 (base64) |
 | `KEY_ALIAS` | 签名别名 |
