@@ -8,23 +8,20 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.FlClash_AND_Publish_PAT }}
-
       - name: Download release assets
         env:
           TAG: ${{ github.event.client_payload.tag }}
           GH_TOKEN: ${{ secrets.FlClash_AND_Publish_PAT }}
         run: |
+          mkdir -p ./release
           gh release download "$TAG" --repo go2world-icu/FlClash --dir ./release
 
-      - name: Commit and push
+      - name: Create Release in FlClash-Publish
+        env:
+          TAG: ${{ github.event.client_payload.tag }}
+          GH_TOKEN: ${{ secrets.FlClash_AND_Publish_PAT }}
         run: |
-          rm -rf latest
-          mv release latest
-          git config user.name "coterjiesen"
-          git config user.email "coterjiesen@gmail.com"
-          git add .
-          git diff --cached --quiet || git commit -m "Sync ${{ github.event.client_payload.tag }}"
-          git push
+          gh release create "$TAG" ./release/* \
+            --repo go2world-icu/FlClash-Publish \
+            --title "$TAG" \
+            --notes "Synced from go2world-icu/FlClash $TAG"
