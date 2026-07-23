@@ -1,0 +1,28 @@
+name: Sync Release
+
+on:
+  repository_dispatch:
+    types: [new-release]
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download release assets
+        env:
+          TAG: ${{ github.event.client_payload.tag }}
+          GH_TOKEN: ${{ secrets.FlClash_AND_Publish_PAT }}
+        run: |
+          gh release download "$TAG" --repo go2world-icu/FlClash --dir ./release
+
+      - name: Commit and push
+        run: |
+          rm -rf latest
+          mv release latest
+          git config user.name "coterjiesen"
+          git config user.email "coterjiesen@gmail.com"
+          git add .
+          git diff --cached --quiet || git commit -m "Sync ${{ github.event.client_payload.tag }}"
+          git push
